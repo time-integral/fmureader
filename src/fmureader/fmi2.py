@@ -5,7 +5,7 @@ from enum import Enum
 from typing import Annotated
 from xml.etree.ElementTree import Element
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, model_validator
 
 __all__ = [
     "read_model_description",
@@ -1694,6 +1694,30 @@ class FmiModelDescription(BaseModel):
             description="Ordered lists of outputs, exposed state derivatives, and the initial unknowns. Optionally, the functional dependency of these variables can be defined.",
         ),
     ] = None
+
+    _variables_by_name: dict[str, ScalarVariable] = PrivateAttr(default_factory=dict)
+
+    def model_post_init(self, __context: object) -> None:
+        self._variables_by_name = {v.name: v for v in self.model_variables}
+
+    def get_variable(self, name: str) -> ScalarVariable:
+        """Return the ScalarVariable with the given name.
+
+        Args:
+            name: Variable name as defined in the model description.
+
+        Returns:
+            The matching ScalarVariable.
+
+        Raises:
+            KeyError: If no variable with that name exists.
+        """
+        try:
+            return self._variables_by_name[name]
+        except KeyError:
+            raise KeyError(
+                f"Variable {name!r} not found in model description"
+            ) from None
 
     def to_xml(self) -> Element:
         """Convert FmiModelDescription to XML Element"""
