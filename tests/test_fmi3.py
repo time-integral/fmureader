@@ -913,6 +913,96 @@ def test_model_structure_initial_unknowns(
                 assert all(isinstance(dep, str) for dep in unknown.dependencies_kind)
 
 
+def test_get_variable():
+    """get_variable returns the correct Variable by name in O(1)."""
+    from fmureader.fmi3 import (
+        FmiModelDescription,
+        Variable,
+        Float64Variable,
+        Int32Variable,
+        CausalityEnum,
+        VariabilityEnum,
+    )
+
+    v_float = Variable(
+        float64=Float64Variable(
+            name="position",
+            value_reference=1,
+            causality=CausalityEnum.output,
+            variability=VariabilityEnum.continuous,
+        )
+    )
+    v_int = Variable(
+        int32=Int32Variable(
+            name="counter",
+            value_reference=2,
+            causality=CausalityEnum.output,
+            variability=VariabilityEnum.discrete,
+        )
+    )
+    md = FmiModelDescription(
+        fmi_version="3.0",
+        model_name="TestModel",
+        instantiation_token="{00000000-0000-0000-0000-000000000000}",
+        model_variables=[v_float, v_int],
+    )
+
+    # Returns the exact same object (not a copy)
+    assert md.get_variable("position") is v_float
+    assert md.get_variable("counter") is v_int
+
+    # Missing name raises KeyError with the variable name in the message
+    with pytest.raises(KeyError, match="position_missing"):
+        md.get_variable("position_missing")
+
+
+def test_get_variable_not_in_serialization():
+    """The name index (_variables_by_name) must not appear in model serialization."""
+    from fmureader.fmi3 import FmiModelDescription, Variable, Float64Variable
+
+    v = Variable(float64=Float64Variable(name="x", value_reference=0))
+    md = FmiModelDescription(
+        fmi_version="3.0",
+        model_name="M",
+        instantiation_token="{00000000-0000-0000-0000-000000000000}",
+        model_variables=[v],
+    )
+    serialized = md.model_dump()
+    assert "_variables_by_name" not in serialized
+    assert "variables_by_name" not in serialized
+
+
+@pytest.mark.parametrize(
+    "reference_fmu, variable_name, expected_type, expected_value_reference",
+    [
+        ("3.0/BouncingBall.fmu", "h", "Float64", 1),
+        ("3.0/BouncingBall.fmu", "g", "Float64", 5),
+        ("3.0/Feedthrough.fmu", "Int32_input", "Int32", 19),
+        ("3.0/Feedthrough.fmu", "Boolean_input", "Boolean", 27),
+        ("3.0/Stair.fmu", "counter", "Int32", 1),
+    ],
+)
+def test_get_variable_with_reference_fmus(
+    reference_fmu,
+    variable_name,
+    expected_type,
+    expected_value_reference,
+    reference_fmus_dir,
+):
+    """get_variable returns the correct variable when reading real FMU files."""
+    filename = (reference_fmus_dir / reference_fmu).absolute()
+    md = read_model_description(filename)
+
+    var = md.get_variable(variable_name)
+    assert var.name == variable_name
+    assert var.value_reference == expected_value_reference
+    assert var.get_variable_type() == expected_type
+
+    # Result is identical to iterating model_variables
+    expected = next(v for v in md.model_variables if v.name == variable_name)
+    assert var is expected
+
+
 def test_variable_validation():
     """Test validation logic in Float32Type and Float64Type"""
     from pydantic import ValidationError

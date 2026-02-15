@@ -684,7 +684,98 @@ def test_model_structure_initial_unknowns(reference_fmu, reference_fmus_dir):
                 assert all(hasattr(dep, "value") for dep in unknown.dependencies_kind)
 
 
-def test_variable_validation():
+def test_get_variable():
+    """get_variable returns the correct ScalarVariable by name in O(1)."""
+    from fmureader.fmi2 import (
+        FmiModelDescription,
+        ScalarVariable,
+        RealVariable,
+        IntegerVariable,
+        CausalityEnum,
+        VariabilityEnum,
+    )
+
+    real_var = RealVariable(start=1.0)
+    int_var = IntegerVariable(start=0)
+    sv_real = ScalarVariable(
+        name="position",
+        value_reference=1,
+        causality=CausalityEnum.output,
+        variability=VariabilityEnum.continuous,
+        real=real_var,
+    )
+    sv_int = ScalarVariable(
+        name="counter",
+        value_reference=2,
+        causality=CausalityEnum.output,
+        variability=VariabilityEnum.discrete,
+        integer=int_var,
+    )
+    md = FmiModelDescription(
+        fmi_version="2.0",
+        model_name="TestModel",
+        guid="{00000000-0000-0000-0000-000000000000}",
+        model_variables=[sv_real, sv_int],
+    )
+
+    # Returns the exact same object (not a copy)
+    assert md.get_variable("position") is sv_real
+    assert md.get_variable("counter") is sv_int
+
+    # Missing name raises KeyError with the variable name in the message
+    with pytest.raises(KeyError, match="position_missing"):
+        md.get_variable("position_missing")
+
+
+def test_get_variable_not_in_serialization():
+    """The name index (_variables_by_name) must not appear in model serialization."""
+    from fmureader.fmi2 import FmiModelDescription, ScalarVariable, RealVariable
+
+    sv = ScalarVariable(name="x", value_reference=0, real=RealVariable())
+    md = FmiModelDescription(
+        fmi_version="2.0",
+        model_name="M",
+        guid="{00000000-0000-0000-0000-000000000000}",
+        model_variables=[sv],
+    )
+    serialized = md.model_dump()
+    assert "_variables_by_name" not in serialized
+    assert "variables_by_name" not in serialized
+
+
+@pytest.mark.parametrize(
+    "reference_fmu, variable_name, expected_type, expected_value_reference",
+    [
+        ("2.0/BouncingBall.fmu", "h", "Real", 1),
+        ("2.0/BouncingBall.fmu", "g", "Real", 5),
+        ("2.0/Feedthrough.fmu", "Int32_input", "Integer", 19),
+        ("2.0/Feedthrough.fmu", "Boolean_input", "Boolean", 27),
+        ("2.0/Feedthrough.fmu", "String_input", "String", 29),
+        ("2.0/Stair.fmu", "counter", "Integer", 1),
+    ],
+)
+def test_get_variable_with_reference_fmus(
+    reference_fmu,
+    variable_name,
+    expected_type,
+    expected_value_reference,
+    reference_fmus_dir,
+):
+    """get_variable returns the correct variable when reading real FMU files."""
+    filename = (reference_fmus_dir / reference_fmu).absolute()
+    md = read_model_description(filename)
+
+    var = md.get_variable(variable_name)
+    assert var.name == variable_name
+    assert var.value_reference == expected_value_reference
+    assert var.get_variable_type() == expected_type
+
+    # Result is identical to iterating model_variables
+    expected = next(v for v in md.model_variables if v.name == variable_name)
+    assert var is expected
+
+
+def test_get_variable_validation():
     """Test validation logic in RealSimpleType and IntegerSimpleType"""
     from fmureader.fmi2 import RealSimpleType, IntegerSimpleType
 
