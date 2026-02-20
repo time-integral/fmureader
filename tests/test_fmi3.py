@@ -1249,6 +1249,145 @@ def test_variable_with_declared_type(reference_fmus_dir: pathlib.Path):
     assert h_var.variability.value == "continuous"
 
 
+@pytest.mark.parametrize(
+    "sci_notation, expected",
+    [
+        ("1e-6", 1e-6),
+        ("1e6", 1e6),
+        ("1.5e-3", 1.5e-3),
+        ("-3.7e-2", -3.7e-2),
+        ("2.5e+4", 2.5e4),
+        ("1E-6", 1e-6),
+    ],
+)
+def test_scientific_notation_float64_start(sci_notation, expected):
+    """Scientific notation in Float64 variable start values is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="TestModel"
+    instantiationToken="{{12345678-1234-1234-1234-123456789012}}">
+    <ModelVariables>
+        <Float64 name="x" valueReference="0" causality="output" start="{sci_notation}"/>
+    </ModelVariables>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        var = md.model_variables[0]
+        assert var.float64 is not None
+        assert var.float64.start == [pytest.approx(expected)]
+    finally:
+        os.unlink(tmp)
+
+
+@pytest.mark.parametrize(
+    "sci_notation, expected",
+    [
+        ("1e-6", 1e-6),
+        ("1e6", 1e6),
+        ("1.5e-3", 1.5e-3),
+        ("-3.7e-2", -3.7e-2),
+        ("2.5e+4", 2.5e4),
+        ("1E-6", 1e-6),
+    ],
+)
+def test_scientific_notation_float32_start(sci_notation, expected):
+    """Scientific notation in Float32 variable start values is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="TestModel"
+    instantiationToken="{{12345678-1234-1234-1234-123456789012}}">
+    <ModelVariables>
+        <Float32 name="x" valueReference="0" causality="output" start="{sci_notation}"/>
+    </ModelVariables>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        var = md.model_variables[0]
+        assert var.float32 is not None
+        assert var.float32.start == [pytest.approx(expected, rel=1e-5)]
+    finally:
+        os.unlink(tmp)
+
+
+@pytest.mark.parametrize(
+    "min_val, max_val, nominal_val",
+    [
+        ("1e-6", "1e6", "1e-3"),
+        ("-1.5E+2", "1.5E+2", "1E0"),
+    ],
+)
+def test_scientific_notation_float64_min_max_nominal(min_val, max_val, nominal_val):
+    """Scientific notation in Float64 min/max/nominal attributes is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="TestModel"
+    instantiationToken="{{12345678-1234-1234-1234-123456789012}}">
+    <ModelVariables>
+        <Float64 name="x" valueReference="0" causality="output"
+                 min="{min_val}" max="{max_val}" nominal="{nominal_val}" start="0.0"/>
+    </ModelVariables>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        var = md.model_variables[0]
+        assert var.float64 is not None
+        assert var.float64.min_value == pytest.approx(float(min_val))
+        assert var.float64.max_value == pytest.approx(float(max_val))
+        assert var.float64.nominal == pytest.approx(float(nominal_val))
+    finally:
+        os.unlink(tmp)
+
+
+def test_scientific_notation_default_experiment():
+    """Scientific notation in DefaultExperiment step_size is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="3.0"
+    modelName="TestModel"
+    instantiationToken="{12345678-1234-1234-1234-123456789012}">
+    <ModelVariables/>
+    <DefaultExperiment startTime="0.0" stopTime="1.0" stepSize="1e-6" tolerance="1e-8"/>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        assert md.default_experiment is not None
+        assert md.default_experiment.step_size == pytest.approx(1e-6)
+        assert md.default_experiment.tolerance == pytest.approx(1e-8)
+    finally:
+        os.unlink(tmp)
+
+
 def test_discrete_variable(reference_fmus_dir: pathlib.Path):
     """Test that discrete variables are correctly parsed from Stair.fmu"""
     filename = (reference_fmus_dir / "3.0/Stair.fmu").absolute()

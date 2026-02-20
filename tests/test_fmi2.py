@@ -1441,6 +1441,119 @@ def test_xml_serialization_roundtrip_with_reference_fmus(
 
 
 @pytest.mark.parametrize(
+    "sci_notation, expected",
+    [
+        ("1e-6", 1e-6),
+        ("1e6", 1e6),
+        ("1.5e-3", 1.5e-3),
+        ("-3.7e-2", -3.7e-2),
+        ("2.5e+4", 2.5e4),
+        ("1E-6", 1e-6),
+    ],
+)
+def test_scientific_notation_real_start(sci_notation, expected):
+    """Scientific notation in Real variable start values is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="2.0"
+    modelName="TestModel"
+    guid="{{12345678-1234-1234-1234-123456789012}}">
+    <ModelVariables>
+        <ScalarVariable name="x" valueReference="0" causality="output" variability="continuous">
+            <Real start="{sci_notation}"/>
+        </ScalarVariable>
+    </ModelVariables>
+    <ModelStructure>
+        <Outputs/>
+    </ModelStructure>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        var = md.model_variables[0]
+        assert var.real is not None
+        assert var.real.start == pytest.approx(expected)
+    finally:
+        os.unlink(tmp)
+
+
+@pytest.mark.parametrize(
+    "min_val, max_val, nominal_val",
+    [
+        ("1e-6", "1e6", "1e-3"),
+        ("-1.5E+2", "1.5E+2", "1E0"),
+    ],
+)
+def test_scientific_notation_real_min_max_nominal(min_val, max_val, nominal_val):
+    """Scientific notation in Real min/max/nominal attributes is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = f"""<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="2.0"
+    modelName="TestModel"
+    guid="{{12345678-1234-1234-1234-123456789012}}">
+    <ModelVariables>
+        <ScalarVariable name="x" valueReference="0" causality="output" variability="continuous">
+            <Real min="{min_val}" max="{max_val}" nominal="{nominal_val}" start="0.0"/>
+        </ScalarVariable>
+    </ModelVariables>
+    <ModelStructure>
+        <Outputs/>
+    </ModelStructure>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        var = md.model_variables[0]
+        assert var.real is not None
+        assert var.real.min_value == pytest.approx(float(min_val))
+        assert var.real.max_value == pytest.approx(float(max_val))
+        assert var.real.nominal == pytest.approx(float(nominal_val))
+    finally:
+        os.unlink(tmp)
+
+
+def test_scientific_notation_default_experiment():
+    """Scientific notation in DefaultExperiment step_size is parsed correctly."""
+    import tempfile
+    import os
+
+    xml_content = """<?xml version="1.0" encoding="UTF-8"?>
+<fmiModelDescription
+    fmiVersion="2.0"
+    modelName="TestModel"
+    guid="{12345678-1234-1234-1234-123456789012}">
+    <ModelVariables/>
+    <ModelStructure>
+        <Outputs/>
+    </ModelStructure>
+    <DefaultExperiment startTime="0.0" stopTime="1.0" stepSize="1e-6" tolerance="1e-8"/>
+</fmiModelDescription>"""
+
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".xml", delete=False) as f:
+        f.write(xml_content)
+        tmp = f.name
+    try:
+        md = read_model_description(tmp)
+        assert md.default_experiment is not None
+        assert md.default_experiment.step_size == pytest.approx(1e-6)
+        assert md.default_experiment.tolerance == pytest.approx(1e-8)
+    finally:
+        os.unlink(tmp)
+
+
+@pytest.mark.parametrize(
     "reference_fmu",
     [
         "2.0/Feedthrough.fmu",
